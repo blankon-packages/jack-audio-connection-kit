@@ -1,0 +1,2 @@
+# compat level is 9 for multiarch, but we only require dh 8.1.3
+jack-audio-connection-kit source: package-needs-versioned-debhelper-build-depends

@@ -1,0 +1,118 @@
+#!/usr/bin/make -f
+# rules
+#
+# Robert Jordens <rjo@gmx.de>
+#
+# This software may be used and distributed according to the terms
+# of the GNU General Public License, incorporated herein by reference.
+#
+# $Id: rules 342 2004-03-25 14:00:53Z rj $
+#
+
+DEB_AUTO_UPDATE_LIBTOOL = pre
+DEB_AUTO_UPDATE_AUTOCONF = 2.65
+DEB_AUTO_UPDATE_AUTOHEADER = 2.65
+DEB_AUTO_UPDATE_ACLOCAL = 1.11
+DEB_AUTO_UPDATE_AUTOMAKE = 1.11
+
+ifneq (,$(filter stage1,$(DEB_BUILD_PROFILES)))
+export DH_OPTIONS = -Njackd1-firewire
+endif
+
+include /usr/share/cdbs/1/class/autotools.mk
+include /usr/share/cdbs/1/rules/debhelper.mk
+-include /usr/share/cdbs/1/rules/upstream-tarball.mk
+-include /usr/share/cdbs/1/rules/utils.mk
+
+# Silence optional build-dependencies to ease backporting
+CDBS_BUILD_DEPENDS_rules_upstream-tarball =
+CDBS_BUILD_DEPENDS_rules_utils_copyright-check =
+
+# Explicitly require these versions until cdbs knows about multiarch
+CDBS_BUILD_DEPENDS += , cdbs (>= 0.4.93~),\
+					  debhelper (>= 8.1.3)
+CDBS_BUILD_DEPENDS_rules_debhelper_buildinfo =
+
+DEB_UPSTREAM_PACKAGE = jack-audio-connection-kit
+DEB_UPSTREAM_TARBALL_BASENAME_MANGLE = s/\+.*//
+DEB_UPSTREAM_URL = http://jackaudio.org/downloads
+
+#unused, TODO get this soname from configure.in
+#DEB_SONAME_VERSION := 0.91.1-0
+DEB_CONFIGURE_EXTRA_FLAGS := --enable-resize \
+	--libdir=\$${prefix}/lib/$(DEB_HOST_MULTIARCH) \
+	--enable-timestamps --disable-iec61883 --with-oldtrans \
+	--disable-ensure-mlock --enable-sse=yes --enable-static=yes
+	# --enable-posix-shm
+
+_build_arch := $(shell dpkg-architecture -qDEB_BUILD_ARCH)
+DEB_BUILD_ARCH ?= $(_build_arch)
+ifneq (,$(filter amd64,$(DEB_BUILD_ARCH)))
+DEB_CONFIGURE_EXTRA_FLAGS += --enable-dynsimd=yes
+endif
+
+DEB_DH_INSTALLINIT_ARGS := -- start 99 2 3 4 5 . stop 10 0 1 6 .
+
+# to avoid stripping when nostrip is set in DEB_BUILD_OPTIONS
+ifeq (,$(filter nostrip,$(DEB_BUILD_OPTIONS)))
+  DEB_CONFIGURE_EXTRA_FLAGS += --enable-stripped-jackd
+endif
+
+ifeq (linux-gnu,$(DEB_HOST_GNU_SYSTEM))
+  DEB_CONFIGURE_EXTRA_FLAGS += --with-default-tmpdir=/dev/shm 
+else
+  DEB_CONFIGURE_EXTRA_FLAGS += --with-default-tmpdir=/tmp 
+endif
+
+ifneq (,$(filter doopt,$(DEB_BUILD_OPTIONS)))
+# do optimization for the different architectures
+  ifneq (,$(findstring i386,$(DEB_BUILD_ARCH)))
+    DEB_CONFIGURE_EXTRA_FLAGS += --enable-optimize --enable-sse --enable-mmx -enable-dynsimd
+    OPTI_FLAGS := -D_REENTRANT -O3 -fomit-frame-pointer -ffast-math -fstrength-reduce -funroll-loops
+    CXXFLAGS += $(OPTI_FLAGS)
+    CFLAGS += $(OPTI_FLAGS)
+  endif
+endif
+
+ifeq (,$(filter noopt,$(DEB_BUILD_OPTIONS)))
+# do optimization for the different architectures
+# ifneq (,$(findstring i386,$(DEB_HOST_GNU_CPU)))
+# 		DEB_CONFIGURE_EXTRA_FLAGS += --enable-optimize
+# 		OPTI_FLAGS := -D_REENTRANT -O3 -fomit-frame-pointer -ffast-math -fstrength-reduce -funroll-loops -fmove-all-movables
+# 		CXXFLAGS += $(OPTI_FLAGS)
+# 		CFLAGS += $(OPTI_FLAGS)
+# endif
+endif
+
+ifneq (,$(filter amd64,$(DEB_BUILD_ARCH)))
+CFLAGS += -m3dnow -msse
+endif
+
+DEB_DH_MAKESHLIBS_ARGS := -V -Xintime -Xinprocess -Xjack_alsa -Xjack_oss\
+	-Xjack_dummy -Xjack_iec61883 -Xjack_firewire
+
+# bootstrap autotools files (CDBS normally only updates them)
+DEB_MAKE_CLEAN_TARGET = distclean
+DEB_AUTOMAKE_ARGS = --add-missing --copy
+pre-build::
+	touch aclocal.m4
+clean::
+	find -name Makefile.in -exec rm {} +
+
+ifeq (linux,$(DEB_HOST_ARCH_OS))
+install/jackd1::
+	dh_install -pjackd1 debian/tmp/usr/bin/alsa_in
+	dh_install -pjackd1 debian/tmp/usr/bin/alsa_out
+	dh_install -pjackd1 debian/tmp/usr/lib/*/jack/jack_alsa.so
+	dh_install -pjackd1 debian/tmp/usr/lib/*/jack/jack_alsa_midi.so
+	dh_install -pjackd1 debian/tmp/usr/lib/*/jack/zalsa_in.so
+	dh_install -pjackd1 debian/tmp/usr/lib/*/jack/zalsa_out.so
+endif
+
+.PHONY: faq
+# this target fetches the FAQ from the JACK homepage
+faq:
+	dh_testdir
+	w3m -dump http://jackaudio.org/faq > debian/FAQ.dltmp
+	mv debian/FAQ.dltmp debian/FAQ
+	dch -a "debian/FAQ: updated from webpage"

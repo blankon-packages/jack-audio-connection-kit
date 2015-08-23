@@ -1,0 +1,4 @@
+# Run the "uscan" command to check for upstream updates and more.
+version=3
+opts=uversionmangle=s/(\d+\.\d+)\.0$/$1/ \
+http://jackaudio.org/download http://jackaudio.org/downloads/jack-audio-connection-kit-(.*).tar.gz

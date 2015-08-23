@@ -1,0 +1,3 @@
+jackd/jackd.1
+man/*.1
+debian/jack_simple_client.1
